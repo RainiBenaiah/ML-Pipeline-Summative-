@@ -5,13 +5,13 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 
 // Import components for each screen
-import LandingPage from './components/LandingPage';
-import PredictionScreen from './components/PredictionScreen';
-import UploadScreen from './components/UploadScreen';
-import RetrainScreen from './components/RetrainScreen';
-import FeatureImportanceScreen from './components/FeatureImportanceScreen';
-import VisualizationScreen from './components/VisualizationScreen';
-import Navbar from './components/Navbar';
+import LandingPage from './Screens/LandingPage';
+import PredictionScreen from './Screens/PredictionScreen';
+import UploadScreen from './Screens/UploadScreen';
+import RetrainScreen from './Screens/RetrainScreen';
+import FeatureImportanceScreen from './Screens/FeatureImportanceScreen';
+import VisualizationScreen from './Screens/VisualizationScreen';
+import Navbar from './Screens/Navbar';
 
 function App() {
   return (
