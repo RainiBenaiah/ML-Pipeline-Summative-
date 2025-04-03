@@ -211,7 +211,7 @@ function PredictionScreen() {
     setError(null);
     
     try {
-      // For now, simulate an API call with a setTimeout
+      // TESTING simulate an API call with a setTimeout
       // Replace this with your actual API endpoint call
       setTimeout(() => {
         // Mock response - replace with actual API call
@@ -224,8 +224,8 @@ function PredictionScreen() {
         setIsLoading(false);
       }, 1500);
       
-      /* Uncomment when ready to use real API
-      const response = await fetch('your-prediction-endpoint', {
+       Uncomment when ready to use real API
+      const response = await fetch('https://ml-pipeline-summative-1q2i.onrender.com/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
