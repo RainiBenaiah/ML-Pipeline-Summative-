@@ -41,7 +41,7 @@ function UploadScreen() {
     
     try {
       // Replace with your actual API endpoint
-      const response = await axios.post('https://your-api-endpoint/upload', formData, {
+      const response = await axios.post('https://ml-pipeline-summative-1q2i.onrender.com/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
