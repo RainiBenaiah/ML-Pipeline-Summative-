@@ -3,15 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import os
 import pandas as pd
-import numpy as np
 from pydantic import BaseModel
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    f1_score, precision_score, recall_score, accuracy_score, log_loss, classification_report
-)
 from functools import lru_cache
 
 # Initialize FastAPI app and load environment variables
@@ -27,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load trained model
+# Constants
 MODEL_PATH = "models/rf_model.pkl"
 
 # BMI Classification mapping
@@ -41,31 +37,23 @@ BMI_CLASSES = {
     6: 'Obesity_Type_III'      # Higher than 40
 }
 
-def load_model():
-    if os.path.exists(MODEL_PATH):
-        return joblib.load(MODEL_PATH)
-    print("Error: Model file not found. Ensure `rf_model.pkl` is in the `models/` directory.")
-    raise HTTPException(status_code=500, detail="Model file not found.")
-
-# Create a connection function to use with MongoDB
+# MongoDB connection with proper connection pooling
 @lru_cache(maxsize=1)
 def get_mongo_client():
-    """Create and return a MongoDB client (only when needed)"""
-    MONGO_URI = os.getenv("MONGO_URI")
-    return MongoClient(MONGO_URI)
+    """Create and cache a MongoDB client using environment variables"""
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise HTTPException(status_code=500, detail="MongoDB URI not found in environment variables")
+    return MongoClient(mongo_uri, maxPoolSize=10)
 
 def get_collection():
-    """Get the MongoDB collection safely after worker forking"""
+    """Get the MongoDB collection"""
     client = get_mongo_client()
     db = client["BMI-Data"]
     return db["patients"]
 
-# Remove the global MongoDB connection
-# client = MongoClient(MONGO_URI)  # <-- This was causing the fork safety issue
-# db = client["BMI-Data"]
-# collection = db["patients"]
-
-transport_mapping = {
+# Mappings to ensure consistent data processing
+TRANSPORT_MAPPING = {
     "Automobile": 0,
     "Bike": 1,
     "Motorbike": 2,
@@ -73,20 +61,27 @@ transport_mapping = {
     "Walking": 4
 }
 
-def preprocess_data(df):
-    """Convert categorical variables into numerical format."""
-    categorical_cols = ["CAEC", "CALC", "MTRANS"]
-    
-    # One-hot encode 'CAEC' and 'CALC' (if needed)
-    df = pd.get_dummies(df, columns=["CAEC", "CALC"], drop_first=True)
-    
-    # Label encode 'MTRANS'
-    if "MTRANS" in df.columns:
-        df["MTRANS"] = df["MTRANS"].map(transport_mapping).fillna(0).astype(int)
+BINARY_MAPPINGS = {
+    'yes': 1, 'no': 0, 'Male': 1, 'Female': 0, 
+    True: 1, False: 0, 1: 1, 0: 0
+}
 
-    return df
+ORDINAL_MAPPINGS = {
+    'CAEC': {'Never': 0, 'Sometimes': 1, 'Frequently': 2, 'Always': 3},
+    'CALC': {'Never': 0, 'Sometimes': 1, 'Frequently': 2, 'Always': 3}
+}
 
-# Define request model for prediction
+# Model loading with error handling
+def load_model():
+    """Load the trained model from disk"""
+    try:
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
+        return joblib.load(MODEL_PATH)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+# Define request model with proper validation
 class PredictionRequest(BaseModel):
     id: int
     Gender: int  # 1 for Male, 0 for Female
@@ -94,191 +89,178 @@ class PredictionRequest(BaseModel):
     Height: float
     Weight: float
     family_history_with_overweight: int  # 1 for yes, 0 for no
-    FAVC: int  # Frequent consumption of high caloric food, 1 for yes, 0 for no
+    FAVC: int  # Frequent consumption of high caloric food
     FCVC: float  # Frequency of consumption of vegetables
     NCP: float  # Number of main meals
     CAEC: int  # Consumption of food between meals (0-3)
     SMOKE: int  # 1 for yes, 0 for no
     CH2O: float  # Consumption of water daily
-    SCC: int  # Calories consumption monitoring, 1 for yes, 0 for no
+    SCC: int  # Calories consumption monitoring
     FAF: float  # Physical activity frequency
     TUE: float  # Time using technology devices
     CALC: int  # Consumption of alcohol (0-3)
-    MTRANS: str  # Transportation used - raw categorical value
+    MTRANS: str  # Transportation used
 
-# Predict endpoint
+# Prediction endpoint
 @app.post("/predict")
 def predict(data: PredictionRequest):
-    model = load_model()
-    
-    # Convert the input data to a DataFrame
-    input_dict = data.model_dump()
-    input_df = pd.DataFrame([input_dict])
-    
-    # Extract MTRANS columns
-    mtrans_cols = [col for col in input_df.columns if col.startswith("MTRANS_")]
-    
-    # Create a single MTRANS column from the one-hot encoded inputs
-    if mtrans_cols:
-        # Find which MTRANS option is set to 1
-        for col in mtrans_cols:
-            if input_df[col].iloc[0] == 1:
-                transport_type = col.replace("MTRANS_", "")
-                break
-        else:
-            transport_type = "Automobile"  # Default if none selected
-        
-        # Create the MTRANS column
-        input_df["MTRANS"] = transport_type
-        
-        # Drop the MTRANS_* columns
-        input_df = input_df.drop(columns=mtrans_cols)
-    
-    # Apply the same preprocessing as during training
-    # First make sure CAEC and CALC are encoded as they were during training
-    input_df = pd.get_dummies(input_df, columns=["CAEC", "CALC"], prefix_sep="_", dtype=float)
-    
-    # Handle MTRANS with one-hot encoding
-    input_df = pd.get_dummies(input_df, columns=["MTRANS"], prefix_sep="_", dtype=float)
-    
-    # Ensure all expected columns from training are present (fill missing with 0)
-    expected_columns = model.feature_names_in_
-    for col in expected_columns:
-        if col not in input_df.columns:
-            input_df[col] = 0
-    
-    # Ensure only columns used during training are included
-    input_df = input_df[expected_columns]
-    
-    # Make prediction
-    prediction_numeric = model.predict(input_df)[0]
-    probabilities = model.predict_proba(input_df)[0]
-    confidence = float(max(probabilities) * 100)
-    
-    return {
-        "bmi_class": BMI_CLASSES[prediction_numeric],
-        "class_number": int(prediction_numeric),
-        "confidence": confidence
-    }
-
-# Retrain model endpoint with memory optimization
-@app.post("/retrain")
-def retrain():
+    """
+    Predict BMI class based on the provided health data
+    """
     try:
-        # Get collection reference
-        collection = get_collection()
-        
-        # Fetch all data in a single operation (avoiding excessive iteration)
-        data = list(collection.find({}, {"_id": 0}))
-        if not data:
-            return {"message": "No new data available for retraining."}
+        model = load_model()
         
         # Convert to DataFrame
-        df = pd.DataFrame(data)
+        input_dict = data.model_dump()
+        input_df = pd.DataFrame([input_dict])
         
-        # Ensure required column exists
-        if "NObeyesdad" not in df.columns:
-            raise HTTPException(status_code=500, detail="'NObeyesdad' target column missing from dataset.")
+        # Handle MTRANS conversion - simplify by using direct mapping
+        if "MTRANS" in input_df.columns:
+            # Create one-hot encoded columns for MTRANS
+            for transport_type in TRANSPORT_MAPPING.keys():
+                col_name = f"MTRANS_{transport_type}"
+                input_df[col_name] = 0
+                if input_df["MTRANS"].iloc[0] == transport_type:
+                    input_df[col_name] = 1
+            
+            # Remove original MTRANS column
+            input_df = input_df.drop(columns=["MTRANS"])
+            
+        # Ensure all expected model features are present
+        for feature in model.feature_names_in_:
+            if feature not in input_df.columns:
+                input_df[feature] = 0
+                
+        # Keep only the features used by the model
+        input_df = input_df[model.feature_names_in_]
         
-        # Preprocess data
-        df = preprocess_data(df)
-
-        X = df.drop(columns=["NObeyesdad"], errors='ignore')
-        y = df["NObeyesdad"].astype(int)
-
-        # Split data
-        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        # Train model
-        new_model = RandomForestClassifier(
-            n_estimators=200,
-            max_depth=15,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            max_features='sqrt',
-            bootstrap=True,
-            random_state=42
-        )
-        new_model.fit(X_train, y_train)
-
-        # Save model
-        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-        joblib.dump(new_model, MODEL_PATH)
-
-        return {"message": "Model retrained and saved successfully."}
-
+        # Make prediction
+        prediction = model.predict(input_df)[0]
+        probabilities = model.predict_proba(input_df)[0]
+        confidence = float(max(probabilities) * 100)
+        
+        return {
+            "bmi_class": BMI_CLASSES[prediction],
+            "class_number": int(prediction),
+            "confidence": confidence
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
+# Simplified Upload endpoint 
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    """
+    Upload CSV data to MongoDB with proper validation
+    """
+    try:
+        # Read CSV data
+        contents = await file.read()
+        df = pd.read_csv(pd.io.common.BytesIO(contents))
+        
+        # Validate required columns
+        required_columns = ["Gender", "Age", "Height", "Weight", "NObeyesdad"]
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise HTTPException(status_code=400, 
+                detail=f"Missing required columns: {', '.join(missing_columns)}")
+        
+        # Process binary columns consistently
+        binary_cols = ['Gender', 'family_history_with_overweight', 'FAVC', 'SMOKE', 'SCC']
+        for col in binary_cols:
+            if col in df.columns:
+                df[col] = df[col].map(lambda x: BINARY_MAPPINGS.get(x, 0))
+        
+        # Process ordinal columns
+        for col, mapping in ORDINAL_MAPPINGS.items():
+            if col in df.columns:
+                df[col] = df[col].map(mapping)
+        
+        # Handle target variable
+        target_mapping = {v: k for k, v in BMI_CLASSES.items()}
+        if "NObeyesdad" in df.columns and df["NObeyesdad"].dtype == 'object':
+            df["NObeyesdad"] = df["NObeyesdad"].map(target_mapping)
+        
+        # Insert data to MongoDB
+        collection = get_collection()
+        records = df.to_dict(orient="records")
+        collection.insert_many(records)
+        
+        return {"message": f"Successfully uploaded {len(records)} records"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 # Feature importance endpoint
 @app.get("/feature_importance")
 def get_feature_importance():
+    """
+    Get the importance of each feature in the model
+    """
     try:
         model = load_model()
         importance = model.feature_importances_
         feature_names = model.feature_names_in_
         
-        # Create sorted importance dictionary
+        # Sort features by importance
         importance_dict = {name: float(importance[i]) for i, name in enumerate(feature_names)}
         sorted_importance = dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
         
         return {"feature_importance": sorted_importance}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Feature importance error: {str(e)}")
 
-# Upload CSV data to MongoDB endpoint
-@app.post("/upload")
-def upload(file: UploadFile = File(...)):
+# Simplified retrain endpoint
+@app.post("/retrain")
+def retrain():
+    """
+    Retrain the model with data from MongoDB
+    """
     try:
-        df = pd.read_csv(file.file)
-        
-        # Check if required columns are present
-        required_columns = ["Gender", "Age", "Height", "Weight", "NObeyesdad"]
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        
-        if missing_columns:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required columns: {', '.join(missing_columns)}"
-            )
-        
-        # Convert binary columns to 0/1
-        binary_cols = ['Gender', 'family_history_with_overweight', 'FAVC', 'SMOKE', 'SCC']
-        for col in binary_cols:
-            if col in df.columns:
-                df[col] = df[col].map({'yes': 1, 'no': 0, 'Male': 1, 'Female': 0})
-        
-        # Convert ordinal columns
-        ordinal_mappings = {
-            'CAEC': {'Never': 0, 'Sometimes': 1, 'Frequently': 2, 'Always': 3},
-            'CALC': {'Never': 0, 'Sometimes': 1, 'Frequently': 2, 'Always': 3}
-        }
-        for col, mapping in ordinal_mappings.items():
-            if col in df.columns:
-                df[col] = df[col].map(mapping)
-        
-        # Convert target variable if needed
-        target_mapping = {
-            'Insufficient_Weight': 0,
-            'Normal_Weight': 1,
-            'Overweight_Level_I': 2,
-            'Overweight_Level_II': 3,
-            'Obesity_Type_I': 4,
-            'Obesity_Type_II': 5,
-            'Obesity_Type_III': 6
-        }
-        if "NObeyesdad" in df.columns and df["NObeyesdad"].dtype == 'object':
-            df["NObeyesdad"] = df["NObeyesdad"].map(target_mapping)
-        
-        # Get MongoDB collection safely    
+        # Get data from MongoDB
         collection = get_collection()
+        data = list(collection.find({}, {"_id": 0}))
         
-        # Insert data into MongoDB
-        collection.insert_many(df.to_dict(orient="records"))
-        return {"message": f"Data uploaded successfully. Added {len(df)} records."}
+        if not data:
+            return {"message": "No data available for retraining"}
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        
+        # Validate target column
+        if "NObeyesdad" not in df.columns:
+            raise HTTPException(status_code=400, detail="Missing target column 'NObeyesdad'")
+        
+        # Prepare data
+        X = df.drop(columns=["NObeyesdad"], errors='ignore')
+        y = df["NObeyesdad"].astype(int)
+        
+        # Split data
+        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        # Train model with optimized parameters
+        model = RandomForestClassifier(
+            n_estimators=100,  # Reduced for faster training
+            max_depth=15,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            max_features='sqrt',
+            bootstrap=True,
+            random_state=42,
+            n_jobs=-1  # Use all available cores
+        )
+        
+        model.fit(X_train, y_train)
+        
+        # Save model
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        joblib.dump(model, MODEL_PATH)
+        
+        return {"message": "Model retrained successfully"}
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Retraining error: {str(e)}")
 
 # Run the app
 if __name__ == "__main__":
