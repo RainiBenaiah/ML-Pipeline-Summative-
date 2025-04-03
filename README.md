@@ -169,7 +169,7 @@ The model can be retrained with new data:
 
 - **ML Backend**: Deployed on Render
 - **Web Frontend**: Deployed on Vercel
-- **Database**: Connected to the backend for storing historical data and predictions
+- **Database**: Connected to the backend for storing historical data and predictions,MongoDB
 
 ## Getting Started
 
