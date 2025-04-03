@@ -2,35 +2,35 @@ import React from 'react';
 import { Container, Card, Row, Col } from 'react-bootstrap';
 
 function VisualizationScreen() {
-  // Placeholder image paths - replace with your actual image paths
+  
   const visualizations = [
     {
       id: 1,
       title: 'Correlation Heatmap',
       description: 'This heatmap shows the correlation between different features in our obesity dataset. Darker colors indicate stronger correlations, helping identify which factors tend to occur together.',
-      imagePath: '/api/placeholder/500/400',
+      imagePath: '/images/download.png',
       altText: 'Correlation Heatmap'
     },
     {
       id: 2,
       title: 'Log Loss Curve',
       description: 'The log loss curve demonstrates how our model,s performance improved during training. The declining curve shows the reduction in prediction error as the model learns from the training data.',
-      imagePath: '/api/placeholder/500/400',
+      imagePath: '/images/rfloglosss',
       altText: 'Log Loss Curve'
     },
     {
       id: 3,
       title: 'Weight vs. Height Distribution',
       description: 'This scatter plot visualizes the relationship between weight and height across different obesity classes. The clustering patterns reveal how these two key metrics help distinguish between classification categories.',
-      imagePath: '/api/placeholder/500/400',
+      imagePath: '/images/weightvsheight.png',
       altText: 'Weight vs Height Distribution'
     },
     {
       id: 4,
-      title: 'Male & Female BMI Distribution',
-      description: 'These density plots compare the distribution of BMI values between males and females in our dataset. The overlapping curves highlight gender-specific patterns in obesity classification.',
-      imagePath: '/api/placeholder/500/400',
-      altText: 'Male and Female BMI Distribution'
+      title: 'Confusion Matrix',
+      description: 'onfusion matrix is a table used to evaluate the performance of the classification model by comparing the bmi classification predicted labels with the actual labels. It consists of True Positives (TP), False Positives (FP), True Negatives (TN), and False Negatives (FN), helping to measure metrics like accuracy, precision, recall,',
+      imagePath: '/images/confusion_matrix.png',
+      altText: 'Confusion Matrixs'
     }
   ];
   
