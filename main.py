@@ -165,33 +165,18 @@ def predict(data: PredictionRequest):
 @app.post("/retrain")
 def retrain():
     try:
-        # Get collection reference safely
+        # Get collection reference
         collection = get_collection()
         
-        # Fetch data in batches to reduce memory usage
-        batch_size = 1000
-        data_batches = []
-        cursor = collection.find({}, {"_id": 0})
-        
-        # Process in manageable chunks
-        current_batch = []
-        for i, doc in enumerate(cursor):
-            current_batch.append(doc)
-            if (i + 1) % batch_size == 0:
-                data_batches.append(pd.DataFrame(current_batch))
-                current_batch = []
-        
-        # Add the last batch if it exists
-        if current_batch:
-            data_batches.append(pd.DataFrame(current_batch))
-        
-        # Check if we have any data
-        if not data_batches:
+        # Fetch all data in a single operation (avoiding excessive iteration)
+        data = list(collection.find({}, {"_id": 0}))
+        if not data:
             return {"message": "No new data available for retraining."}
-            
-        # Combine batches
-        df = pd.concat(data_batches, ignore_index=True)
         
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        
+        # Ensure required column exists
         if "NObeyesdad" not in df.columns:
             raise HTTPException(status_code=500, detail="'NObeyesdad' target column missing from dataset.")
         
@@ -201,10 +186,10 @@ def retrain():
         X = df.drop(columns=["NObeyesdad"], errors='ignore')
         y = df["NObeyesdad"].astype(int)
 
-        # Split into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Split data
+        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Train new model
+        # Train model
         new_model = RandomForestClassifier(
             n_estimators=200,
             max_depth=15,
@@ -212,36 +197,19 @@ def retrain():
             min_samples_leaf=2,
             max_features='sqrt',
             bootstrap=True,
-            random_state=42,
-            verbose=0
+            random_state=42
         )
         new_model.fit(X_train, y_train)
 
-        # Evaluate new model
-        new_preds = new_model.predict(X_test)
-        new_probs = new_model.predict_proba(X_test)
-
-        new_model_metrics = {
-            "accuracy": accuracy_score(y_test, new_preds),
-            "precision": precision_score(y_test, new_preds, average="weighted"),
-            "recall": recall_score(y_test, new_preds, average="weighted"),
-            "f1_score": f1_score(y_test, new_preds, average="weighted"),
-            "log_loss": log_loss(y_test, new_probs),
-            "classification_report": classification_report(y_test, new_preds, output_dict=True)
-        }
-
-        # Save new model
+        # Save model
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
         joblib.dump(new_model, MODEL_PATH)
 
-        return {
-            "message": "Model retrained successfully.",
-            "old_model_metrics": old_model_metrics,
-            "new_model_metrics": new_model_metrics
-        }
+        return {"message": "Model retrained and saved successfully."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # Feature importance endpoint
 @app.get("/feature_importance")
