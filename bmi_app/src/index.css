@@ -1,0 +1,125 @@
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f8f9fa;
+  }
+  
+  code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+      monospace;
+  }
+  
+  /* Custom styles for TRUTH WEIGHTS application */
+  .main-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .content {
+    flex: 1;
+  }
+  
+  .footer {
+    margin-top: auto;
+    padding: 1rem 0;
+    background-color: #343a40;
+    color: white;
+  }
+  
+  /* Landing page styles */
+  .jumbotron {
+    background-color: #007bff;
+    color: white;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .table-obesity {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  
+  .table-obesity th {
+    background-color: #007bff;
+    color: white;
+  }
+  
+  /* Form styles */
+  .input-form {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  
+  .form-label {
+    font-weight: 500;
+  }
+  
+  .btn-predict {
+    background-color: #28a745;
+    border-color: #28a745;
+  }
+  
+  .btn-predict:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+  }
+  
+  /* Prediction result */
+  .prediction-result {
+    margin-top: 2rem;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+  }
+  
+  .prediction-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #007bff;
+  }
+  
+  /* Card styles */
+  .card {
+    transition: transform 0.3s;
+    margin-bottom: 1.5rem;
+  }
+  
+  .card:hover {
+    transform: translateY(-5px);
+  }
+  
+  .card-header {
+    font-weight: bold;
+  }
+  
+  /* Navigation buttons */
+  .nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+  }
+  
+  /* Animation for success messages */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  .fade-in {
+    animation: fadeIn 1s;
+  }
+  
+  /* Visualization images */
+  .viz-image {
+    max-width: 100%;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+  }
