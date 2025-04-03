@@ -202,23 +202,7 @@ def retrain():
         y = df["NObeyesdad"].astype(int)
 
         # Split into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        # Load old model (if exists)
-        old_model_metrics = {}
-        if os.path.exists(MODEL_PATH):
-            old_model = joblib.load(MODEL_PATH)
-            old_preds = old_model.predict(X_test)
-            old_probs = old_model.predict_proba(X_test)
-
-            old_model_metrics = {
-                "accuracy": accuracy_score(y_test, old_preds),
-                "precision": precision_score(y_test, old_preds, average="weighted"),
-                "recall": recall_score(y_test, old_preds, average="weighted"),
-                "f1_score": f1_score(y_test, old_preds, average="weighted"),
-                "log_loss": log_loss(y_test, old_probs),
-                "classification_report": classification_report(y_test, old_preds, output_dict=True)
-            }
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42
 
         # Train new model
         new_model = RandomForestClassifier(
