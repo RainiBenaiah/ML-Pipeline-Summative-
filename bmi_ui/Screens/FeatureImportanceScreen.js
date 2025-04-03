@@ -11,7 +11,7 @@ function FeatureImportanceScreen() {
     const fetchFeatureImportance = async () => {
       try {
         // Replace with your actual API endpoint
-        const response = await axios.get('https://your-api-endpoint/feature-importance');
+        const response = await axios.get('https://ml-pipeline-summative-1q2i.onrender.com/feature_importance');
         setFeatureData(response.data);
       } catch (error) {
         console.error('Error fetching feature importance data:', error);
