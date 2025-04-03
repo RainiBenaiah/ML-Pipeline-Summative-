@@ -43,7 +43,9 @@ BMI_CLASSES = {
 def load_model():
     if os.path.exists(MODEL_PATH):
         return joblib.load(MODEL_PATH)
+    print("Error: Model file not found. Ensure `rf_model.pkl` is in the `models/` directory.")
     raise HTTPException(status_code=500, detail="Model file not found.")
+
 
 # Connect to MongoDB (Atlas)
 MONGO_URI = os.getenv("MONGO_URI")
@@ -91,20 +93,54 @@ class PredictionRequest(BaseModel):
     FAF: float  # Physical activity frequency
     TUE: float  # Time using technology devices
     CALC: int  # Consumption of alcohol (0-3)
-    MTRANS_Automobile: int 
-    MTRANS_Automobile: int = 0  # Transportation used: Automobile
-    MTRANS_Bike: int = 0  # Transportation used: Bike
-    MTRANS_Motorbike: int = 0  # Transportation used: Motorbike
-    MTRANS_Public_Transportation: int = 0  # Transportation used: Public Transportation
-    MTRANS_Walking: int = 0 
+    MTRANS: str  # Transportation used - raw categorical value
 # Predict endpoint
 @app.post("/predict")
 def predict(data: PredictionRequest):
     model = load_model()
-    input_data = pd.DataFrame([data.model_dump()], dtype=float)
     
-    prediction_numeric = model.predict(input_data)[0]
-    probabilities = model.predict_proba(input_data)[0]
+    # Convert the input data to a DataFrame
+    input_dict = data.model_dump()
+    input_df = pd.DataFrame([input_dict])
+    
+    # Extract MTRANS columns
+    mtrans_cols = [col for col in input_df.columns if col.startswith("MTRANS_")]
+    
+    # Create a single MTRANS column from the one-hot encoded inputs
+    if mtrans_cols:
+        # Find which MTRANS option is set to 1
+        for col in mtrans_cols:
+            if input_df[col].iloc[0] == 1:
+                transport_type = col.replace("MTRANS_", "")
+                break
+        else:
+            transport_type = "Automobile"  # Default if none selected
+        
+        # Create the MTRANS column
+        input_df["MTRANS"] = transport_type
+        
+        # Drop the MTRANS_* columns
+        input_df = input_df.drop(columns=mtrans_cols)
+    
+    # Apply the same preprocessing as during training
+    # First make sure CAEC and CALC are encoded as they were during training
+    input_df = pd.get_dummies(input_df, columns=["CAEC", "CALC"], prefix_sep="_", dtype=float)
+    
+    # Handle MTRANS with one-hot encoding
+    input_df = pd.get_dummies(input_df, columns=["MTRANS"], prefix_sep="_", dtype=float)
+    
+    # Ensure all expected columns from training are present (fill missing with 0)
+    expected_columns = model.feature_names_in_
+    for col in expected_columns:
+        if col not in input_df.columns:
+            input_df[col] = 0
+    
+    # Ensure only columns used during training are included
+    input_df = input_df[expected_columns]
+    
+    # Make prediction
+    prediction_numeric = model.predict(input_df)[0]
+    probabilities = model.predict_proba(input_df)[0]
     confidence = float(max(probabilities) * 100)
     
     return {
