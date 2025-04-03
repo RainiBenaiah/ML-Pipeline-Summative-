@@ -3,6 +3,7 @@ import { Container, Card, Row, Col, Alert, Button, Spinner } from 'react-bootstr
 import Form from '@rjsf/bootstrap-4';
 import validator from '@rjsf/validator-ajv8';
 import { Link } from 'react-router-dom';
+import APIStatusPanel from './APIStatusPanel';
 
 function PredictionScreen() {
   const [prediction, setPrediction] = useState(null);
