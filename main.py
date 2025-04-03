@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     f1_score, precision_score, recall_score, accuracy_score, log_loss, classification_report
 )
+from functools import lru_cache
 
 # Initialize FastAPI app and load environment variables
 app = FastAPI()
@@ -46,13 +47,23 @@ def load_model():
     print("Error: Model file not found. Ensure `rf_model.pkl` is in the `models/` directory.")
     raise HTTPException(status_code=500, detail="Model file not found.")
 
+# Create a connection function to use with MongoDB
+@lru_cache(maxsize=1)
+def get_mongo_client():
+    """Create and return a MongoDB client (only when needed)"""
+    MONGO_URI = os.getenv("MONGO_URI")
+    return MongoClient(MONGO_URI)
 
-# Connect to MongoDB (Atlas)
-MONGO_URI = os.getenv("MONGO_URI")
-client = MongoClient(MONGO_URI)
-db = client["BMI-Data"]
-collection = db["patients"]
+def get_collection():
+    """Get the MongoDB collection safely after worker forking"""
+    client = get_mongo_client()
+    db = client["BMI-Data"]
+    return db["patients"]
 
+# Remove the global MongoDB connection
+# client = MongoClient(MONGO_URI)  # <-- This was causing the fork safety issue
+# db = client["BMI-Data"]
+# collection = db["patients"]
 
 transport_mapping = {
     "Automobile": 0,
@@ -94,6 +105,7 @@ class PredictionRequest(BaseModel):
     TUE: float  # Time using technology devices
     CALC: int  # Consumption of alcohol (0-3)
     MTRANS: str  # Transportation used - raw categorical value
+
 # Predict endpoint
 @app.post("/predict")
 def predict(data: PredictionRequest):
@@ -149,16 +161,37 @@ def predict(data: PredictionRequest):
         "confidence": confidence
     }
 
-# Retrain model endpoint
+# Retrain model endpoint with memory optimization
 @app.post("/retrain")
 def retrain():
     try:
-        new_data = list(collection.find({}, {"_id": 0}))
-        if not new_data:
+        # Get collection reference safely
+        collection = get_collection()
+        
+        # Fetch data in batches to reduce memory usage
+        batch_size = 1000
+        data_batches = []
+        cursor = collection.find({}, {"_id": 0})
+        
+        # Process in manageable chunks
+        current_batch = []
+        for i, doc in enumerate(cursor):
+            current_batch.append(doc)
+            if (i + 1) % batch_size == 0:
+                data_batches.append(pd.DataFrame(current_batch))
+                current_batch = []
+        
+        # Add the last batch if it exists
+        if current_batch:
+            data_batches.append(pd.DataFrame(current_batch))
+        
+        # Check if we have any data
+        if not data_batches:
             return {"message": "No new data available for retraining."}
-
-        df = pd.DataFrame(new_data)
-
+            
+        # Combine batches
+        df = pd.concat(data_batches, ignore_index=True)
+        
         if "NObeyesdad" not in df.columns:
             raise HTTPException(status_code=500, detail="'NObeyesdad' target column missing from dataset.")
         
@@ -242,7 +275,6 @@ def get_feature_importance():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # Upload CSV data to MongoDB endpoint
 @app.post("/upload")
 def upload(file: UploadFile = File(...)):
@@ -286,7 +318,10 @@ def upload(file: UploadFile = File(...)):
         }
         if "NObeyesdad" in df.columns and df["NObeyesdad"].dtype == 'object':
             df["NObeyesdad"] = df["NObeyesdad"].map(target_mapping)
-            
+        
+        # Get MongoDB collection safely    
+        collection = get_collection()
+        
         # Insert data into MongoDB
         collection.insert_many(df.to_dict(orient="records"))
         return {"message": f"Data uploaded successfully. Added {len(df)} records."}
