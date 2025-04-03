@@ -14,7 +14,7 @@ function RetrainScreen() {
     
     try {
       // Replace with your actual API endpoint
-      const response = await axios.post('https://your-api-endpoint/retrain');
+      const response = await axios.post('https://ml-pipeline-summative-1q2i.onrender.com/retrain');
       
       setRetrainStatus({
         success: true,
